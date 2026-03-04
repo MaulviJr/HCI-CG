@@ -1,0 +1,28 @@
+#actionBtn {
+    padding: 10px 20px;
+    margin: 10px 0;
+    cursor: pointer;
+
+}
+
+#actionBtn:hover {
+    background-color: #e0e0e0;
+}
+
+#actionBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#status {
+    margin-top: 10px;
+    font-weight: 500;
+}
+
+.success {
+    color: green;
+}
+
+.error {
+    color: red;
+}
