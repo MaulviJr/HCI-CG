@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitts's Law Experiment</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f8fafc;
+            user-select: none;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .canvas-area {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+        .target-box {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #000;
+            border-radius: 8px;
+            font-weight: bold;
+            background: white;
+            z-index: 10;
+            transition: transform 0.1s;
+        }
+        .player-box {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #000;
+            border-radius: 8px;
+            font-weight: bold;
+            background: #f1f5f9;
+            width: 80px;
+            height: 40px;
+            z-index: 5;
+        }
+        .obstacle {
+            position: absolute;
+            background: rgba(239, 68, 68, 0.1);
+            border: 2px dashed #ef4444;
+            pointer-events: none;
+            z-index: 4;
+            border-radius: 4px;
+        }
+        .line-label {
+            position: absolute;
+            background: white;
+            padding: 2px 6px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 12px;
+            transform: translate(-50%, -50%);
+            white-space: nowrap;
+            z-index: 20;
+        }
+        .stats-pill {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
+            padding: 4px 16px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .width-marker {
+            position: absolute;
+            height: 10px;
+            border-left: 1px solid #000;
+            border-right: 1px solid #000;
+            top: -15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #connector-line {
+            position: absolute;
+            height: 1px;
+            background: #64748b;
+            transform-origin: 0 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto space-y-6">
+        
+        <!-- Header Controls -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+            <div class="flex flex-wrap gap-3">
+                <div class="stats-pill">
+                    <span>Lives:</span>
+                    <div id="lives-display" class="flex gap-1"></div>
+                </div>
+                <div class="stats-pill">Trial: <span id="trial-count" class="font-bold">0</span></div>
+                <div class="stats-pill">Avg Time: <span id="avg-time" class="font-bold">—</span> ms</div>
+                <div class="stats-pill">Last Time: <span id="last-time" class="font-bold">—</span> ms</div>
+            </div>
+
+            <p class="text-sm text-slate-500">
+                Goal: Click the <strong>Target</strong> (box labeled "TARGET"). Fitts variables are shown: <strong>D</strong> (distance) and <strong>W</strong> (target width).
+            </p>
+
+            <div class="flex flex-wrap items-center gap-4 pt-2">
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium">Target Size (W):</label>
+                    <select id="w-select" class="border rounded px-2 py-1 text-sm bg-slate-50">
+                        <option value="small">Small</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="large">Large</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium">Distance (D):</label>
+                    <select id="d-select" class="border rounded px-2 py-1 text-sm bg-slate-50">
+                        <option value="short">Short</option>
+                        <option value="mid" selected>Mid</option>
+                        <option value="long">Long</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium">Obstacle:</label>
+                    <select id="obs-select" class="border rounded px-2 py-1 text-sm bg-slate-50">
+                        <option value="off">Off</option>
+                        <option value="on">On</option>
+                    </select>
+                </div>
+
+                <div class="flex gap-2 ml-auto">
+                    <button id="start-btn" class="bg-slate-800 text-white px-6 py-1.5 rounded-lg hover:bg-slate-700 transition">Start</button>
+                    <button id="reset-btn" class="border border-slate-300 px-6 py-1.5 rounded-lg hover:bg-slate-50 transition">Reset</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Simulation Area -->
+        <div id="game-container" class="canvas-area">
+            <div id="connector-line"></div>
+            <div id="d-label" class="line-label hidden">D = 0 px</div>
+            
+            <div id="player" class="player-box">PLAYER</div>
+            
+            <div id="target" class="target-box hidden">
+                <div class="width-marker" id="w-marker">
+                    <span id="w-label" class="line-label" style="top: -20px">W = 0 px</span>
+                </div>
+                TARGET
+            </div>
+
+            <div id="obstacle-el" class="obstacle hidden"></div>
+        </div>
+
+        <div id="message-overlay" class="text-center text-slate-400 italic text-sm">
+            Press "Start" to begin the trial. Moving the mouse from PLAYER to TARGET as fast as possible.
+        </div>
+    </div>
+
+    <script>
+        // State management
+        let state = {
+            isRunning: false,
+            trial: 0,
+            lives: 3,
+            times: [],
+            startTime: 0,
+            lastTime: 0,
+            isMoving: false
+        };
+
+        const configMapping = {
+            w: { small: 60, medium: 120, large: 200 },
+            d: { short: 200, mid: 380, long: 550 }
+        };
+
+        // DOM Elements
+        const player = document.getElementById('player');
+        const target = document.getElementById('target');
+        const obstacle = document.getElementById('obstacle-el');
+        const container = document.getElementById('game-container');
+        const line = document.getElementById('connector-line');
+        const dLabel = document.getElementById('d-label');
+        const wLabel = document.getElementById('w-label');
+        const wMarker = document.getElementById('w-marker');
+        
+        const startBtn = document.getElementById('start-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const wSelect = document.getElementById('w-select');
+        const dSelect = document.getElementById('d-select');
+        const obsSelect = document.getElementById('obs-select');
+
+        const trialDisplay = document.getElementById('trial-count');
+        const avgDisplay = document.getElementById('avg-time');
+        const lastDisplay = document.getElementById('last-time');
+        const livesDisplay = document.getElementById('lives-display');
+
+        function updateLives() {
+            livesDisplay.innerHTML = Array(3).fill(0).map((_, i) => 
+                `<span class="text-xl ${i < state.lives ? 'text-black' : 'text-slate-200'}">●</span>`
+            ).join('');
+        }
+
+        function setupPositions() {
+            const rect = container.getBoundingClientRect();
+            const w = configMapping.w[wSelect.value];
+            const d = configMapping.d[dSelect.value];
+            
+            // Fixed angle for consistency with original screenshot style
+            const angle = -Math.PI / 6;
+            
+            const pX = 100;
+            const pY = rect.height - 100;
+            
+            player.style.left = `${pX}px`;
+            player.style.top = `${pY}px`;
+            
+            const tCenterX = pX + 40 + d * Math.cos(angle);
+            const tCenterY = pY + 20 + d * Math.sin(angle);
+            
+            target.style.width = `${w}px`;
+            target.style.height = `${w * 0.6}px`;
+            target.style.left = `${tCenterX - w/2}px`;
+            target.style.top = `${tCenterY - (w*0.6)/2}px`;
+            
+            wLabel.textContent = `W = ${w} px`;
+            wMarker.style.width = `${w}px`;
+            
+            const dx = tCenterX - (pX + 40);
+            const dy = tCenterY - (pY + 20);
+            const actualD = Math.sqrt(dx*dx + dy*dy).toFixed(0);
+            
+            line.style.left = `${pX + 40}px`;
+            line.style.top = `${pY + 20}px`;
+            line.style.width = `${actualD}px`;
+            line.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+            
+            dLabel.textContent = `D = ${actualD} px`;
+            dLabel.style.left = `${pX + 40 + dx/2}px`;
+            dLabel.style.top = `${pY + 20 + dy/2}px`;
+
+            // Obstacle positioning
+            if (obsSelect.value === 'on') {
+                obstacle.classList.remove('hidden');
+                const obsW = 60;
+                const obsH = 180;
+                obstacle.style.width = `${obsW}px`;
+                obstacle.style.height = `${obsH}px`;
+                obstacle.style.left = `${pX + 40 + dx/2 - obsW/2}px`;
+                obstacle.style.top = `${pY + 20 + dy/2 - obsH/2}px`;
+            } else {
+                obstacle.classList.add('hidden');
+            }
+        }
+
+        function startTrial() {
+            if (state.lives <= 0) return;
+            state.isRunning = true;
+            state.isMoving = false;
+            target.classList.remove('hidden');
+            dLabel.classList.remove('hidden');
+            setupPositions();
+            startBtn.disabled = true;
+            startBtn.classList.add('opacity-50');
+        }
+
+        function reset() {
+            state = {
+                isRunning: false,
+                trial: 0,
+                lives: 3,
+                times: [],
+                startTime: 0,
+                lastTime: 0,
+                isMoving: false
+            };
+            updateLives();
+            trialDisplay.textContent = '0';
+            avgDisplay.textContent = '—';
+            lastDisplay.textContent = '—';
+            target.classList.add('hidden');
+            dLabel.classList.add('hidden');
+            obstacle.classList.add('hidden');
+            startBtn.disabled = false;
+            startBtn.classList.remove('opacity-50');
+            document.getElementById('message-overlay').textContent = 'Press "Start" to begin the trial.';
+            document.getElementById('message-overlay').classList.remove('text-red-500', 'font-bold');
+        }
+
+        container.addEventListener('mousemove', () => {
+            if (state.isRunning && !state.isMoving) {
+                state.isMoving = true;
+                state.startTime = performance.now();
+            }
+        });
+
+        target.addEventListener('mousedown', (e) => {
+            if (!state.isRunning) return;
+            e.stopPropagation();
+
+            const endTime = performance.now();
+            const duration = Math.round(endTime - state.startTime);
+            
+            state.lastTime = duration;
+            state.times.push(duration);
+            state.trial++;
+            
+            lastDisplay.textContent = duration;
+            const avg = Math.round(state.times.reduce((a,b) => a+b, 0) / state.times.length);
+            avgDisplay.textContent = avg;
+            trialDisplay.textContent = state.trial;
+
+            target.style.background = '#dcfce7';
+            setTimeout(() => {
+                target.style.background = 'white';
+                setupPositions();
+                state.isMoving = false;
+            }, 150);
+        });
+
+        container.addEventListener('mousedown', () => {
+            if (!state.isRunning) return;
+            
+            state.lives--;
+            updateLives();
+            
+            container.style.background = '#fee2e2';
+            setTimeout(() => container.style.background = 'white', 100);
+
+            if (state.lives <= 0) {
+                state.isRunning = false;
+                startBtn.disabled = false;
+                startBtn.classList.remove('opacity-50');
+                const avg = state.times.length ? Math.round(state.times.reduce((a,b) => a+b, 0) / state.times.length) : 0;
+                document.getElementById('message-overlay').textContent = `Session Over. Trials: ${state.trial}, Avg: ${avg}ms.`;
+                document.getElementById('message-overlay').classList.add('text-red-500', 'font-bold');
+            }
+        });
+
+        startBtn.addEventListener('click', () => {
+            document.getElementById('message-overlay').textContent = 'Trials active. Target the center box!';
+            startTrial();
+        });
+        
+        resetBtn.addEventListener('click', reset);
+        
+        [wSelect, dSelect, obsSelect].forEach(el => {
+            el.addEventListener('change', () => {
+                if (state.isRunning) setupPositions();
+            });
+        });
+
+        updateLives();
+    </script>
+</body>
+</html>
